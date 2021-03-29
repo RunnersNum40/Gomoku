@@ -1,7 +1,14 @@
 from random import randint
 
 def print_board(board):
-    print("\n".join(map(str, board)))
+    print("\n".join(map(lambda row: ", ".join(map(lambda n: f"{n: d}", row)), board)))
+
+def print_big(board):
+    for row in board:
+        row = "   ".join(["___", "BBB", "WWW"][x] for x in row)
+        print(row)
+        print(row)
+        print()
 
 def new_game(dim=8):
     """Generate a blank board.
@@ -21,11 +28,17 @@ def random_move(board, player):
         except:
             pass
 
+def random_board(moves, dim=8):
+    board = new_game(dim)
+    for i in range(moves):
+        board = random_move(board, 1-2*(i%2))
+    return board
+
 def insert_stone(board, player, x, y):
     """Return a copy of the board with a new stone in (x, y).
     Input:
         board : the game state as an n*n list (n likely == 8)
-        player : which player's is placing the stone (white == 1, black == -1)
+        player : which player's is placing the stone (black == 1, white == -1)
         x : the index in the row to place the stone
         y : the index of the row to place the stone
 
@@ -41,7 +54,7 @@ def children(position, player):
     """Iterate over the possible moves from a given state.
     Input:
         position : the game state as an n*n list (n likely == 8)
-        player : which player's move it is (white == 1, black == -1)
+        player : which player's move it is (black == 1, white == -1)
     
     Output: yields each possible move
     """
@@ -130,7 +143,6 @@ def static_eval(position, player):
     downwards += [[position[y][x+y] for y in range(dim-x)] for x in range(1, dim)]
     upwards = [[position[y-x][x] for x in range(y+1)] for y in range(dim)]
     upwards += [[position[dim-y-1][x+y] for y in range(dim-x)] for x in range(1, dim)]
-
     rows = horizontals+verticals+downwards+upwards
 
     white_threats = [0, 0, 0, 0, 0]
@@ -142,6 +154,11 @@ def static_eval(position, player):
                 return float("inf")
             elif black[0] > 0:
                 return float("-inf")
+
+            if white[1] > 0 and player == 1:
+                return 1000000*white_threats[0]
+            elif black[1] > 0 and player == -1:
+                return 1000000*black_threats[0]
             else:
                 # update the tallies
                 white_threats[0] += white[1]
@@ -156,24 +173,20 @@ def static_eval(position, player):
                 black_threats[3] += black[4]
                 black_threats[4] += black[5]
 
-    if player == 1 and white_threats[0] > 0: # if the player can force a win return a very high value
-        return 1000000*white_threats[0]      # if float("inf") was returned the ai would not be able to find the winning move so a very high but finite number is returned
-    if player == -1 and black_threats[0] > 0:
-        return 1000000*black_threats[0]
-
     return sum(w*t for w, t in zip(weights, white_threats))-sum(w*t for w, t in zip(weights, black_threats))
 
 
-
-def minimax(position, player=1, depth=5, alpha=float("inf"), beta=float("-inf")):
+def minimax(position, player=1, depth=2, alpha=float("-inf"), beta=float("inf"), generate_children=children, evaluate=static_eval):
     # if the depth is reached or the game is over
     if depth == 0:
-        return static_eval(position, player)
+        return evaluate(position, player)
+
+    children = sorted(generate_children(position, player), key=lambda child: evaluate(child, player))
 
     if player == 1:
         max_eval = float("-inf")
-        for child in children(position, player):
-            child_eval = minimax(child, -1, depth-1, alpha, beta)
+        for child in children[-10:]:
+            child_eval = minimax(child, -1, depth-1, alpha, beta, generate_children, evaluate)
             max_eval = max(max_eval, child_eval)
             alpha = max(alpha, child_eval)
             if beta <= alpha:
@@ -182,28 +195,34 @@ def minimax(position, player=1, depth=5, alpha=float("inf"), beta=float("-inf"))
 
     elif player == -1:
         min_eval = float("inf")
-        for child in children(position, player):
-            child_eval = minimax(child, 1, depth-1, alpha, beta)
+        for child in children[:10]:
+            child_eval = minimax(child, 1, depth-1, alpha, beta, generate_children, evaluate)
             min_eval = min(min_eval, child_eval)
             beta = min(beta, child_eval)
             if beta <= alpha:
                 break
         return min_eval
 
-def best_move(board, player, depth=5):
+def best_move(board, player, depth=2, generate_children=children, evaluate=static_eval):
     """Find the move that has the highest expected payoff"""
     if player == 1:
-        return max(children(board, 1), key=lambda b: minimax(board, -1, depth))
-    elif player == -1:
-        return min(children(board, -1), key=lambda b: minimax(board, 1, depth))
+        best = float("-inf")
+        best_state = None
+        for child in generate_children(board, 1):
+            child_eval = minimax(child, -1, depth, float("-inf"), float("inf"), generate_children, evaluate)
+            if child_eval >= best:
+                best = child_eval
+                best_state = child
+        print(best)
+        return best_state
 
-if __name__ == '__main__':
-    b = new_game()
-    for i in range(10):
-        b = random_move(b, 1-2*(i%2))
-    print_board(b)
-    print()
-    for i in range(10):
-        b = best_move(b, 1-2*(i%2))
-        print_board(b)
-        print(minimax(b, 1-2*(i%2)))
+    elif player == -1:
+        best = float("inf")
+        best_state = None
+        for child in generate_children(board, -1):
+            child_eval = minimax(child, 1, depth, float("-inf"), float("inf"), generate_children, evaluate)
+            if child_eval <= best:
+                best = child_eval
+                best_state = child
+        print(best)
+        return best_state
